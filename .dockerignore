@@ -1,0 +1,20 @@
+# Nothing private goes into the image. Everything here stays on this computer.
+.git
+.claude
+.next
+node_modules
+.env*
+*.db
+*.db-*
+*.db.*
+*.tsbuildinfo
+backups
+logs
+scripts
+data/users
+data/auth.db*
+data/.connections-key
+data/.vapid.json
+README.md
+AGENTS.md
+CLAUDE.md

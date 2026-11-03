@@ -1,0 +1,1 @@
+ALTER TABLE `money_entries` ADD `account` text;

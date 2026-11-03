@@ -1,0 +1,45 @@
+{
+  "name": "pillar",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=.env.local scripts/migrate.mts",
+    "seed": "node --env-file=.env.local scripts/seed.mts",
+    "seed:routines": "node --env-file=.env.local scripts/seed-routines.mts",
+    "backup": "node --env-file=.env.local scripts/backup.mts",
+    "backup:verify": "node --env-file=.env.local scripts/verify-backup.mts",
+    "sync:shopify": "node --env-file=.env.local scripts/sync-shopify.mts",
+    "import:money": "node --env-file=.env.local scripts/import-money.mts",
+    "import:holdings": "node --env-file=.env.local scripts/import-holdings.mts",
+    "import:sleep": "node --env-file=.env.local scripts/import-sleep.mts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
+    "@libsql/client": "^0.18.0",
+    "adhan": "^4.4.6",
+    "drizzle-orm": "^0.45.2",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "web-push": "^3.6.7",
+    "yahoo-finance2": "^4.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
