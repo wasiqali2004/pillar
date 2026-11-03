@@ -5,17 +5,30 @@ import { useRouter } from "next/navigation";
 import { parseStatement, type Parsed } from "@/lib/money/statement";
 import { importStatementAction } from "@/lib/money/import-actions";
 
-/** Card exports count a purchase as positive, so these start flipped. */
-const BANKS: { name: string; card?: boolean }[] = [
-  { name: "TD" },
-  { name: "RBC" },
-  { name: "Scotiabank" },
-  { name: "BMO" },
-  { name: "CIBC" },
-  { name: "Wealthsimple" },
-  { name: "Tangerine" },
-  { name: "EQ Bank" },
-  { name: "Amex", card: true },
+/**
+ * `card`: credit card exports count a purchase as positive, so these start
+ * flipped. `where`: the hint for finding the download. Menus move, so these
+ * name what to look for rather than promise an exact path.
+ */
+const BANKS: { name: string; card?: boolean; where?: string }[] = [
+  { name: "TD", where: "On EasyWeb, open the account and use Download above the transactions. Pick Spreadsheet (CSV)." },
+  { name: "RBC", where: "In RBC Online Banking, choose Download Transactions and pick Comma Separated Values (.csv)." },
+  { name: "Scotiabank", where: "Open the account on scotiabank.com and use Download transactions. Pick CSV." },
+  { name: "BMO", where: "Open the account on bmo.com and use Download transactions. Pick CSV." },
+  { name: "CIBC", where: "Open the account on cibc.com and use Download transactions. Pick Spreadsheet (CSV)." },
+  { name: "National Bank", where: "Open the account on the website and look for Export or Download, then pick CSV." },
+  { name: "Desjardins", where: "In AccèsD on a computer, open the account and look for Export or Download (CSV)." },
+  { name: "Tangerine", where: "Open the account on tangerine.ca and use Download Transactions. Pick CSV." },
+  { name: "Simplii", where: "Open the account on simplii.com and look for Download transactions. Pick CSV." },
+  { name: "EQ Bank", where: "Open the account on the website and look for Download or Export (CSV)." },
+  { name: "Wealthsimple", where: "Open the account, go to Activity, and look for Export or Download (CSV)." },
+  { name: "KOHO", where: "In KOHO, look for Statements or Export transactions and pick CSV." },
+  { name: "Neo", where: "In the Neo app or website, open Statements and look for a CSV export." },
+  { name: "PC Financial", where: "Open the account on the website and look for Download transactions (CSV)." },
+  { name: "Amex", card: true, where: "On americanexpress.ca, open Statements & Activity and use Download. Pick CSV." },
+  { name: "Capital One", card: true, where: "Open the card on the website and look for Download transactions (CSV)." },
+  { name: "Rogers Bank", card: true, where: "Open the card on the website and look for Download or Export (CSV)." },
+  { name: "Triangle (Canadian Tire)", card: true, where: "Open the card on the website and look for Download transactions (CSV)." },
   { name: "Other" },
 ];
 
@@ -106,7 +119,7 @@ export function StatementUpload() {
         {bank === "Other" && (
           <input
             className="cx-input mt-2 max-w-xs"
-            placeholder="e.g. Visa, Desjardins"
+            placeholder="e.g. Meridian, Coast Capital, a Visa card"
             value={other}
             maxLength={60}
             onChange={(e) => setOther(e.target.value)}
@@ -117,11 +130,17 @@ export function StatementUpload() {
       <div>
         <p className="text-xs font-semibold text-muted">2. Download your transactions as CSV, then choose the file</p>
         <p className="mt-1 text-xs text-faint">
-          On your bank&apos;s website, open the account, find <b>Download</b> or <b>Export transactions</b>, and pick CSV
-          (sometimes called Spreadsheet or Excel). The file stays on your device; only the transactions are saved.
+          {BANKS.find((b) => b.name === bank)?.where ?? (
+            <>
+              On your bank&apos;s website, open the account, find <b>Download</b> or <b>Export transactions</b>, and pick CSV
+              (sometimes called Spreadsheet or Excel).
+            </>
+          )}{" "}
+          Use a computer if you can: most bank apps can&apos;t export. The file stays on your device; only the transactions
+          are saved.
         </p>
         <label className="pill mt-2 inline-flex cursor-pointer">
-          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
+          <input type="file" accept=".csv,.txt,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
           {fileName ? `↻ ${fileName}` : "Choose CSV file"}
         </label>
       </div>

@@ -8,7 +8,7 @@ import { MAX_DAYS, type HealthRow } from "./import";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Saves the daily totals a Fitbit/Takeout export produced in the browser.
+ * Saves the daily totals a health export (Fitbit, Apple Health, Garmin, Oura…) produced in the browser.
  *
  * Upserts per day, and only writes the fields the file actually carried: an
  * export with steps but no sleep must not blank out a night that a previous
@@ -37,7 +37,8 @@ export async function importHealthAction(
       (inRange(r.steps, 0, 500_000) ||
         inRange(r.calories, 0, 30_000) ||
         inRange(r.sleepMinutes, 1, 1_440) ||
-        inRange(r.sleepScore, 1, 100)),
+        inRange(r.sleepScore, 1, 100) ||
+        inRange(r.weightKg, 20, 400)),
   );
   if (clean.length === 0) {
     return { ok: false, error: "None of those days held a usable number." };
@@ -50,11 +51,13 @@ export async function importHealthAction(
       caloriesBurned?: number;
       sleepMinutes?: number;
       sleepScore?: number;
+      weightGrams?: number;
     } = {};
     if (inRange(r.steps, 0, 500_000)) set.steps = Math.round(r.steps!);
     if (inRange(r.calories, 1, 30_000)) set.caloriesBurned = Math.round(r.calories!);
     if (inRange(r.sleepMinutes, 1, 1_440)) set.sleepMinutes = Math.round(r.sleepMinutes!);
     if (inRange(r.sleepScore, 1, 100)) set.sleepScore = Math.round(r.sleepScore!);
+    if (inRange(r.weightKg, 20, 400)) set.weightGrams = Math.round(r.weightKg! * 1000);
     if (Object.keys(set).length === 0) continue;
 
     await db

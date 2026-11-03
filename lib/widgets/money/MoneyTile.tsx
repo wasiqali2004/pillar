@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { MoneyData } from ".";
 import { addMoneyAction } from "../actions";
 import { Tile, Stat, Row, Empty } from "@/components/ui";
 import { money, moneyCompact } from "@/lib/format";
+import { useOpenFromHash } from "@/components/useOpenFromHash";
 
 export function MoneyTile({ data }: { data: MoneyData }) {
   const [open, setOpen] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  useOpenFromHash("#add-money", () => setOpen(true), addButton);
   const empty = data.spentMonth === 0 && data.incomeMonth === 0;
 
   return (
@@ -16,6 +19,7 @@ export function MoneyTile({ data }: { data: MoneyData }) {
       sub="Personal · this month"
       right={
         <button
+          ref={addButton}
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="pill"

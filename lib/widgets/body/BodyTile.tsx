@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useState, useTransition, type ReactNode } from "react";
+import { useId, useRef, useState, useTransition, type ReactNode } from "react";
 import type { BodyData } from ".";
 import { logBodyAction } from "../actions";
 import { Tile } from "@/components/ui";
 import { num, duration, weight } from "@/lib/format";
 import { shiftDate } from "@/lib/date";
+import { useOpenFromHash } from "@/components/useOpenFromHash";
 
 const STEP_TARGET = 8000;
 const SLEEP_TARGET_MIN = 8 * 60;
@@ -20,6 +21,8 @@ type Tone = keyof typeof TONES;
 
 export function BodyTile({ data }: { data: BodyData }) {
   const [open, setOpen] = useState(false);
+  const logButton = useRef<HTMLButtonElement>(null);
+  useOpenFromHash("#log-body", () => setOpen(true), logButton);
   const yesterday = shiftDate(data.today, -1);
 
   return (
@@ -28,6 +31,7 @@ export function BodyTile({ data }: { data: BodyData }) {
       sub={`Yesterday · ${dayLabel(yesterday)}`}
       right={
         <button
+          ref={logButton}
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={`pill ${open ? "pill-selected" : ""}`}

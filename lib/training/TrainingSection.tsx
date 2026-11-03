@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { TrainingData } from ".";
 import type { Progress } from "./progress";
 import {
@@ -15,6 +15,7 @@ import type { RoutineRow } from "./routines";
 import { MUSCLE_GROUPS, MUSCLE_LABELS, type MuscleGroup } from "./muscles";
 import { Empty } from "@/components/ui";
 import { shiftDate } from "@/lib/date";
+import { useOpenFromHash } from "@/components/useOpenFromHash";
 
 /**
  * Training, laid out as a scoreboard first and a log second: streak, this
@@ -32,6 +33,8 @@ export function TrainingSection({
   const [prevInitial, setPrevInitial] = useState(initial);
   const [selected, setSelected] = useState<MuscleGroup | null>(null);
   const [logging, setLogging] = useState(false);
+  const logButton = useRef<HTMLButtonElement>(null);
+  useOpenFromHash("#log-workout", () => setLogging(true), logButton);
   const [pending, start] = useTransition();
   const [syncing, startSync] = useTransition();
 
@@ -71,6 +74,7 @@ export function TrainingSection({
 
           <div className="flex shrink-0 items-center gap-2">
             <button
+              ref={logButton}
               type="button"
               className={`pill ${logging ? "pill-highlight" : ""}`}
               onClick={() => setLogging((v) => !v)}

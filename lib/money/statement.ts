@@ -28,7 +28,14 @@ export type Parsed = {
 
 export const MAX_ROWS = 5000;
 
+/** National Bank and some French-language exports use ";" between fields. */
+function sniffDelimiter(text: string): "," | ";" {
+  const head = text.split(/\r?\n/, 5).join("\n");
+  return (head.match(/;/g)?.length ?? 0) > (head.match(/,/g)?.length ?? 0) ? ";" : ",";
+}
+
 function parseCsv(text: string): string[][] {
+  const sep = sniffDelimiter(text);
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -43,7 +50,7 @@ function parseCsv(text: string): string[][] {
         } else inQuotes = false;
       } else field += c;
     } else if (c === '"') inQuotes = true;
-    else if (c === ",") {
+    else if (c === sep) {
       row.push(field);
       field = "";
     } else if (c === "\n" || c === "\r") {
@@ -61,14 +68,23 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-const DATE_NAMES = ["date", "transaction date", "posted date", "posting date", "value date", "date posted"];
-const AMOUNT_NAMES = ["amount", "transaction amount", "value"];
-const DEBIT_NAMES = ["debit", "withdrawal", "withdrawals", "money out", "out"];
-const CREDIT_NAMES = ["credit", "deposit", "deposits", "money in", "in"];
-const DESC_NAMES = ["description", "description 1", "payee", "merchant", "memo", "details", "transaction", "name"];
+const DATE_NAMES = [
+  "date", "transaction date", "posted date", "posting date", "value date", "date posted", "transfer date",
+  "trans. date", "transaction_date",
+];
+// RBC calls its amount column "CAD$"; some exports say "Amount (CAD)".
+const AMOUNT_NAMES = ["amount", "transaction amount", "cad$", "amount (cad)", "amount cad", "net amount", "value"];
+const DEBIT_NAMES = ["debit", "withdrawal", "withdrawals", "money out", "out", "debit amount", "withdrawal amount"];
+const CREDIT_NAMES = ["credit", "deposit", "deposits", "money in", "in", "credit amount", "deposit amount"];
+// Most specific first: Tangerine has Transaction (DEBIT/CREDIT), Name (the
+// merchant) and an often-empty Memo, and only Name is worth showing.
+const DESC_NAMES = [
+  "description", "description 1", "payee", "merchant", "merchant name", "name", "details", "transaction details",
+  "memo", "transaction",
+];
 
 function findCol(headers: string[], names: string[]): number {
-  const norm = headers.map((h) => h.trim().toLowerCase());
+  const norm = headers.map((h) => h.trim().toLowerCase().replace(/\s+/g, " "));
   for (const name of names) {
     const i = norm.indexOf(name);
     if (i !== -1) return i;
@@ -81,10 +97,13 @@ const MONTHS: Record<string, string> = {
   jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
 };
 
-/** YYYY-MM-DD, MM/DD/YYYY or DD/MM/YYYY (ambiguous ones read as MM/DD), and "05 Oct 2026". */
+/** YYYY-MM-DD, YYYYMMDD (BMO), MM/DD/YYYY or DD/MM/YYYY (ambiguous ones read as MM/DD), and "05 Oct 2026". */
 export function parseDate(raw: string): string | null {
   const s = raw.trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{4}\/\d{2}\/\d{2}/.test(s)) return s.slice(0, 10).replace(/\//g, "-");
+  const compact = s.match(/^(20\d{2})(\d{2})(\d{2})$/);
+  if (compact && Number(compact[2]) >= 1 && Number(compact[2]) <= 12) return `${compact[1]}-${compact[2]}-${compact[3]}`;
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
     const [, a, b, y] = m;
@@ -99,7 +118,13 @@ export function parseDate(raw: string): string | null {
 
 /** "$1,234.56", "(12.00)", "-12.00": the shapes bank exports use for money. */
 function parseAmountCents(raw: string): number | null {
-  let s = raw.trim().replace(/[$,\s]/g, "");
+  let t = raw.trim();
+  // French-format exports write 12,50 for twelve fifty: a comma with exactly two
+  // digits after it and no dot is a decimal comma, not a thousands separator.
+  if (!t.includes(".") && /,\d{2}\)?$/.test(t)) t = t.replace(/[\s.]/g, "").replace(/,(\d{2}\)?)$/, ".$1");
+  let s = t.replace(/[$,\s]/g, "").replace(/(CAD|USD)$/i, "");
+  // A trailing minus ("45.00-") is how a few card exports mark a credit.
+  if (/^\d+(\.\d+)?-$/.test(s)) s = `-${s.slice(0, -1)}`;
   if (!s) return null;
   let negative = false;
   if (s.startsWith("(") && s.endsWith(")")) {
@@ -116,11 +141,23 @@ function parseAmountCents(raw: string): number | null {
 }
 
 export function parseStatement(text: string, invert: boolean): Parsed {
-  const rows = parseCsv(text.replace(/^﻿/, ""));
-  if (rows.length === 0) throw new Error("That file is empty.");
+  const all = parseCsv(text.replace(/^﻿/, ""));
+  if (all.length === 0) throw new Error("That file is empty.");
 
-  const headerless = parseDate(rows[0][0] ?? "") !== null;
-  const headers = headerless ? ["Date", "Description", "Debit", "Credit", "Balance"] : rows[0];
+  // BMO and some others put a line or two of account info above the header.
+  // The header is the first row, among the first ten, naming a date column.
+  const headerAt = all.slice(0, 10).findIndex((r) => findCol(r, DATE_NAMES) !== -1);
+  const rows = headerAt > 0 ? all.slice(headerAt) : all;
+
+  const headerless = headerAt === -1 && parseDate(rows[0][0] ?? "") !== null;
+  // Two headerless layouts: TD and CIBC write Date, Description, Debit, Credit;
+  // Scotiabank writes Date, Amount, then a filler, type and description.
+  const amountSecond = headerless && /^-?\$?[\d,]+(\.\d+)?$/.test((rows[0][1] ?? "").trim());
+  const headers = !headerless
+    ? rows[0]
+    : amountSecond
+      ? ["Date", "Amount", "-", "Type", "Description", ...rows[0].slice(5).map((_, i) => `Column ${i + 6}`)]
+      : ["Date", "Description", "Debit", "Credit", "Balance"];
   const data = headerless ? rows : rows.slice(1);
 
   const dateCol = findCol(headers, DATE_NAMES);

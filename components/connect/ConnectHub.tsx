@@ -9,7 +9,7 @@ import { connectAction, disconnectAction } from "@/lib/connections/actions";
 import { ConnectMoneyClient } from "@/app/connect-money/ConnectMoneyClient";
 import { PlanButton } from "@/components/PlanModal";
 import { StatementUpload } from "./StatementUpload";
-import { HealthUpload } from "./HealthUpload";
+import { FitnessPicker } from "./FitnessPicker";
 import { Freshness } from "./Freshness";
 import type { SourceHealth } from "@/lib/connections/freshness-types";
 
@@ -140,14 +140,16 @@ export function ConnectHub({
   const others = sections.filter((s) => !relevant.includes(s));
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
 
-  const card = (p: Provider) => (
+  const card = (p: Provider, bare = false) => (
     <ProviderCard
       key={p}
       spec={SPECS[p]}
       connection={byProvider.get(p) ?? null}
       serverManaged={p === "hevy" ? serverManaged.hevy : p === "shopify" ? serverManaged.shopify : false}
+      bare={bare}
     />
   );
+  const googleConnected = health.connected && !health.expired;
 
   const render = (s: Section) => {
     if (s === "money") {
@@ -218,77 +220,54 @@ export function ConnectHub({
           </article>
           )}
           <Manual>
-            Just a few things to track? Add money in and out yourself with the <b>Add</b> button on the Money tile.
+            <p>Just a few things to track? Add money in or out yourself; it takes seconds.</p>
+            <LogLinks on={on} links={[{ hash: "#add-money", label: "Add money in or out", widget: "money", tile: "Money" }]} />
           </Manual>
         </Group>
       );
     }
     if (s === "fitness") {
       return (
-        <Group key={s} title="Fitness" sub="Your watch, your gym app, or a file. One of them is enough.">
-          {/* The one-tap option leads. Fitbit and Pixel watches go through
-              Google Health now — the old Fitbit Web API stopped serving data
-              on 2 November 2026. Nothing about Cloud projects appears here:
-              that is the owner's job, over on /app/setup. */}
-          <article className="cx-card md:col-span-2">
-            <div className="flex items-start gap-4">
-              <Mark text="⌚" color="#4285f4" />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">Fitbit, Pixel Watch or Android phone</h3>
-                  {health.connected && !health.expired && <span className="ob-badge">Connected</span>}
-                </div>
-                <p className="mt-1 text-sm text-muted">
-                  Steps, calories burned and sleep — kept up to date by itself, all day.
-                </p>
-
-                {health.connected && !health.expired ? (
-                  <p className="mt-3 text-sm text-teal">
-                    ✓ Connected. Your numbers refresh roughly every 10 minutes.
-                  </p>
+        <Group key={s} title="Fitness" sub="Pick the app or watch you use and you'll see the easiest way to bring it in. No app? Log it yourself.">
+          <FitnessPicker
+            googleConnected={googleConnected}
+            hevyConnected={byProvider.has("hevy") || serverManaged.hevy}
+            hevy={card("hevy", true)}
+            manual={
+              <LogLinks
+                on={on}
+                lead="Log it yourself:"
+                links={[
+                  { hash: "#log-workout", label: "Log a workout", widget: "training", tile: "Training" },
+                  { hash: "#log-body", label: "Log steps, sleep or weight", widget: "body", tile: "Body" },
+                ]}
+              />
+            }
+            google={
+              /* Fitbit and Pixel watches go through Google Health now: the old
+                 Fitbit Web API stopped serving data on 2 November 2026. Nothing
+                 about Cloud projects appears here; that's owner setup's job. */
+              <div>
+                <p className="text-sm text-muted">Steps, calories burned and sleep, kept up to date by itself, all day.</p>
+                {googleConnected ? (
+                  <p className="mt-3 text-sm text-teal">✓ Connected. Your numbers refresh roughly every 10 minutes.</p>
                 ) : health.configured ? (
                   <>
-                    {/* A plain link, not a button with a handler: the route
-                        has to redirect the whole page to Google. */}
+                    {/* A plain link: the route redirects the whole page to Google. */}
                     <a href="/api/auth/google-health" className="ob-next mt-3 inline-flex">
-                      {health.expired ? "Reconnect" : "Connect"}
+                      {health.expired ? "Reconnect" : "Connect with Google"}
                     </a>
                     <p className="mt-2 text-[0.72rem] text-faint">
-                      Opens Google, you press Allow, and you&apos;re back here. Nothing to copy or paste. In early access, Google only lets approved testers through.
+                      Opens Google, you press Allow, and you&apos;re back here. In early access, Google only lets approved
+                      testers through, so use the file upload below if it says the app is blocked.
                     </p>
                   </>
                 ) : (
                   <Unavailable isOwner={isOwner} />
                 )}
               </div>
-            </div>
-          </article>
-
-          {card("hevy")}
-
-          <article className="cx-card">
-            <div className="flex items-start gap-4">
-              <Mark text="↥" color="#2fe1c4" />
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold">No watch? Upload a file</h3>
-                <p className="mt-1 text-sm text-muted">
-                  Works with a Fitbit or Google Takeout export, and brings in your history too.
-                </p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-sm text-teal hover:underline">Upload a file</summary>
-                  <HealthUpload />
-                </details>
-              </div>
-            </div>
-          </article>
-
-          <Manual>
-            No fitness app? Log workouts yourself (exercises, sets, reps and weight) from{" "}
-            <Link href="/app#training" className="text-teal hover:underline">
-              Training → Log workout
-            </Link>
-            .
-          </Manual>
+            }
+          />
         </Group>
       );
     }
@@ -393,10 +372,43 @@ function Unavailable({ isOwner }: { isOwner: boolean }) {
 
 function Manual({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 self-start rounded-[14px] border border-dashed border-line px-4 py-3 text-sm text-muted md:col-span-2">
+    <div className="flex items-start gap-2 self-start rounded-[14px] border border-dashed border-line px-4 py-3 text-sm text-muted md:col-span-2">
       <span aria-hidden className="text-teal">✎</span>
-      <span>{children}</span>
-    </p>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Buttons straight to a tile's log form (the tile opens it from the #hash).
+ * A tile that isn't on the dashboard can't open, so that one says where to add it.
+ */
+function LogLinks({
+  on,
+  lead,
+  links,
+}: {
+  on: Set<WidgetId>;
+  lead?: string;
+  links: { hash: string; label: string; widget: WidgetId; tile: string }[];
+}) {
+  return (
+    <div className="mt-1">
+      {lead && <p className="text-sm text-muted">{lead}</p>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {links.map((l) =>
+          on.has(l.widget) ? (
+            <Link key={l.hash} href={`/app${l.hash}`} className="pill pill-highlight">
+              {l.label} →
+            </Link>
+          ) : (
+            <span key={l.hash} className="text-xs text-faint">
+              {l.label}: add the {l.tile} widget first, from <b>Customize</b> on your dashboard.
+            </span>
+          ),
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -416,10 +428,13 @@ function ProviderCard({
   spec,
   connection,
   serverManaged,
+  bare = false,
 }: {
   spec: Spec;
   connection: ConnectionInfo | null;
   serverManaged: boolean;
+  /** Inside another card (the fitness picker): no frame or logo of its own. */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -458,9 +473,9 @@ function ProviderCard({
   }
 
   return (
-    <article className={`cx-card ${open ? "md:col-span-2" : ""}`}>
+    <article className={bare ? "" : `cx-card ${open ? "md:col-span-2" : ""}`}>
       <div className="flex items-start gap-4">
-        <Mark text={spec.mark.text} color={spec.mark.color} />
+        {!bare && <Mark text={spec.mark.text} color={spec.mark.color} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{spec.name}</h3>
