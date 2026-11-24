@@ -67,7 +67,7 @@ async function refreshHealth(): Promise<SourceResult> {
   const label = "Sleep & steps";
   const s = await healthStatus();
   if (!s.configured) {
-    return { id, label, status: "skipped", detail: "Not configured" };
+    return { id, label, status: "skipped", detail: "Not set up" };
   }
   if (!s.connected) {
     return { id, label, status: "skipped", detail: "Not connected" };
@@ -116,7 +116,7 @@ async function refreshWorkouts(): Promise<SourceResult> {
   const id = "hevy";
   const label = "Workouts";
   if (!(await hevyConfigured())) {
-    return { id, label, status: "skipped", detail: "No API key" };
+    return { id, label, status: "skipped", detail: "Hevy not connected" };
   }
   const r = await syncHevy();
   return {
@@ -138,7 +138,7 @@ async function refreshPrices(): Promise<SourceResult> {
     id: "market",
     label: "Market prices",
     status: "ok",
-    detail: "Cache cleared",
+    detail: "Prices refreshed",
   };
 }
 
@@ -170,7 +170,7 @@ export async function refreshAll(): Promise<RefreshReport> {
       ? run(id, label, fn)
       : Promise.resolve<SourceResult>({ id, label, status: "skipped", detail: "Widget not on dashboard" });
 
-  const sources = await Promise.all([
+  const all = await Promise.all([
     wanted("google_health", "Sleep & steps", ["body"], refreshHealth),
     wanted("shopify", "Shopify sales", ["business"], refreshShopify),
     wanted("square", "Square sales", ["business"], refreshSquare),
@@ -179,6 +179,9 @@ export async function refreshAll(): Promise<RefreshReport> {
     wanted("hevy", "Workouts", ["training", "body"], refreshWorkouts),
     wanted("market", "Market prices", ["portfolio"], refreshPrices),
   ]);
+  // Sources for widgets they don't use are left out of the report: a list of
+  // "not on dashboard" lines for things like Stripe reads as a list of problems.
+  const sources = all.filter((s) => s.detail !== "Widget not on dashboard");
 
   return {
     at: new Date().toISOString(),

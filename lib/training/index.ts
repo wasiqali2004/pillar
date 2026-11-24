@@ -21,6 +21,8 @@ export type WorkoutRow = {
   localDate: string;
   title: string;
   notes: string | null;
+  /** Where it came from: "hevy" ones come back on the next sync unless deleted there. */
+  source: string;
   exercises: ExerciseRow[];
 };
 
@@ -74,6 +76,7 @@ async function hydrate(rows: (typeof workouts.$inferSelect)[]): Promise<WorkoutR
     localDate: w.localDate,
     title: w.title,
     notes: w.notes,
+    source: w.source,
     exercises: exercises
       .filter((e) => e.workoutId === w.id)
       .map((e) => ({

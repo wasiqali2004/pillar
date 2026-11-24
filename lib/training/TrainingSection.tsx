@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { forwardMisHitClick } from "@/components/forwardClick";
 import type { TrainingData } from ".";
 import type { Progress } from "./progress";
 import {
@@ -60,7 +61,7 @@ export function TrainingSection({
     data.workouts.flatMap((w) => w.exercises.filter((e) => e.muscleGroup === m));
 
   return (
-    <section id="training" className="tile-3d">
+    <section id="training" className="tile-3d" onClick={forwardMisHitClick}>
       <div className="tile">
         <div className="tile-head flex shrink-0 flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -110,7 +111,16 @@ export function TrainingSection({
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                    {data.label} · {data.date}
+                    {/* "Today · Tue, Nov 24" rather than an ISO date; other days
+                        already carry the full date in their label. */}
+                    {data.label === "Today" || data.label === "Yesterday"
+                      ? `${data.label} · ${new Date(`${data.date}T12:00:00Z`).toLocaleDateString("en-CA", {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          timeZone: "UTC",
+                        })}`
+                      : data.label}
                   </div>
                   <div className="truncate text-sm font-semibold">
                     {data.workouts.map((w) => w.title).join(" + ") || "Rest day"}
@@ -217,13 +227,19 @@ export function TrainingSection({
                         <button
                           type="button"
                           className="text-[0.62rem] text-faint hover:text-bad"
-                          title="Removes it here only — delete in Hevy to remove it everywhere"
-                          onClick={() =>
+                          title={
+                            w.source === "hevy"
+                              ? "Removes it here only — delete in Hevy to remove it everywhere"
+                              : "Removes this workout"
+                          }
+                          onClick={() => {
+                            // One stray tap shouldn't lose a session.
+                            if (!window.confirm(`Remove ${w.title}? This can't be undone.`)) return;
                             start(async () => {
                               await deleteWorkoutAction(w.id);
                               setData(await loadTrainingAction(data.date));
-                            })
-                          }
+                            });
+                          }}
                         >
                           Remove {w.title}
                         </button>

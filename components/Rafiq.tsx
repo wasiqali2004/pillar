@@ -10,9 +10,12 @@ type Msg = Anthropic.Beta.BetaMessageParam;
 
 const OPEN_EVENT = "pillar:rafiq-open";
 
-const STARTERS = (muslim: boolean) => [
+// The middle starter logs something, so it has to be something on their
+// dashboard: offering "I just prayed Asr" with no prayer tile ends in Rafiq
+// saying the widget is off.
+const STARTERS = (prayers: boolean) => [
   "How's my day looking?",
-  muslim ? "I just prayed Asr" : "I just finished my workout",
+  prayers ? "I just prayed Asr" : "I just finished my workout",
   "What should I focus on this week?",
 ];
 
@@ -52,7 +55,19 @@ export function RafiqButton() {
  * `enabled` is false on the Free plan: the panel still opens, but it explains
  * Rafiq is part of Pro instead of offering a chat box that would fail.
  */
-export function RafiqPanel({ enabled = true, muslim = true }: { enabled?: boolean; muslim?: boolean }) {
+export function RafiqPanel({
+  enabled = true,
+  configured = true,
+  muslim = true,
+  prayers = true,
+}: {
+  enabled?: boolean;
+  /** The server has an AI key. Without one, say so before they type, not after. */
+  configured?: boolean;
+  muslim?: boolean;
+  /** Prayers (or Deen) is on their dashboard. */
+  prayers?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -187,14 +202,30 @@ export function RafiqPanel({ enabled = true, muslim = true }: { enabled?: boolea
             </div>
           )}
 
-          {enabled && messages.length === 0 && (
+          {enabled && !configured && (
+            <div className="rafiq-in space-y-3">
+              <p className="text-sm leading-relaxed text-muted">
+                {muslim ? "Assalamu alaykum. " : "Hey. "}I&apos;m Rafiq. I&apos;ll be able to read across your widgets, tell you
+                how your week is really going, and log things when you tell me.
+              </p>
+              <p className="rounded-[10px] border border-line-soft px-3 py-2 text-sm text-muted">
+                I&apos;m not switched on yet. Everything else on your dashboard works without me, and the{" "}
+                <a href="/app/review" className="text-teal hover:underline">
+                  Week
+                </a>{" "}
+                page already counts how you&apos;re doing.
+              </p>
+            </div>
+          )}
+
+          {enabled && configured && messages.length === 0 && (
             <div className="rafiq-in space-y-4">
               <p className="text-sm leading-relaxed text-muted">
                 {muslim ? "Assalamu alaykum. " : "Hey. "}I can see the widgets on your dashboard. Ask how you&apos;re doing, or tell
                 me what you&apos;ve done and I&apos;ll log it once you say yes.
               </p>
               <div className="flex flex-wrap gap-2">
-                {STARTERS(muslim).map((s) => (
+                {STARTERS(prayers).map((s) => (
                   <button key={s} type="button" className="rafiq-chip" onClick={() => send(s)}>
                     {s}
                   </button>
@@ -242,7 +273,7 @@ export function RafiqPanel({ enabled = true, muslim = true }: { enabled?: boolea
           {error && <p className="rafiq-in rounded-[10px] border border-bad/40 px-3 py-2 text-sm text-bad">{error}</p>}
         </div>
 
-        {enabled && (
+        {enabled && configured && (
           <form onSubmit={onSubmit} className="border-t border-line-soft p-4">
             <div className="rafiq-input">
               <textarea

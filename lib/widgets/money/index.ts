@@ -1,5 +1,5 @@
 import "server-only";
-import { and, gte, sql, desc } from "drizzle-orm";
+import { and, eq, gte, lt, sql, desc } from "drizzle-orm";
 import { defineWidget } from "../types";
 import { MoneyTile } from "./MoneyTile";
 import { db } from "@/lib/db";
@@ -10,6 +10,7 @@ import {
   localDate,
   startOfWeek,
   startOfMonth,
+  shiftDate,
   dayOfMonth,
   daysInMonth,
 } from "@/lib/date";
@@ -17,6 +18,8 @@ import {
 export type MoneyData = {
   spentWeek: number;
   spentMonth: number;
+  /** Store sales for the whole of last month, so a quiet first week doesn't read as nothing. */
+  businessLastMonth: number;
   /** Everything made this month: earnings + business + investments. */
   incomeMonth: number;
   /** Paycheques and other direct deposits from work. */
@@ -109,6 +112,7 @@ export async function loadMoney(): Promise<MoneyData> {
   const today = localDate();
   const week = startOfWeek(today);
   const month = startOfMonth(today);
+  const lastMonth = startOfMonth(shiftDate(month, -1));
   const inMonth = sinceDate(month);
   const out = sql`${moneyEntries.direction} = 'out'`;
 
@@ -118,6 +122,7 @@ export async function loadMoney(): Promise<MoneyData> {
     earningsMonth,
     interestMonth,
     businessMonth,
+    businessLastMonth,
     excludedTransfers,
     stockChangeMonth,
     cats,
@@ -132,6 +137,11 @@ export async function loadMoney(): Promise<MoneyData> {
       .select({ v: sql<number>`coalesce(sum(${businessRevenue.revenueCents}), 0)` })
       .from(businessRevenue)
       .where(gte(businessRevenue.localDate, month))
+      .then((r) => Number(r[0]?.v ?? 0)),
+    db
+      .select({ v: sql<number>`coalesce(sum(${businessRevenue.revenueCents}), 0)` })
+      .from(businessRevenue)
+      .where(and(gte(businessRevenue.localDate, lastMonth), lt(businessRevenue.localDate, month)))
       .then((r) => Number(r[0]?.v ?? 0)),
     total(inMonth, out, isTransfer),
     // Portfolio value change over the last month, from the Portfolio widget's
@@ -190,6 +200,7 @@ export async function loadMoney(): Promise<MoneyData> {
     incomeMonth,
     earningsMonth,
     businessMonth,
+    businessLastMonth,
     investmentsMonth,
     stockChangeMonth,
     netMonth: incomeMonth - spentMonth,
@@ -227,6 +238,10 @@ export async function addMoney(
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     return { ok: false, error: "Amount must be a positive number of cents." };
   }
+  // A stray extra zero or two shouldn't wreck the month's numbers.
+  if (input.amountCents > 10_000_000_00) {
+    return { ok: false, error: "That amount looks too large. Check it and try again." };
+  }
 
   const [row] = await db
     .insert(moneyEntries)
@@ -249,6 +264,21 @@ export async function addMoney(
   });
 
   return { ok: true, id: row.id };
+}
+
+/** Removes one entry: a typo, or a line from a statement that shouldn't count. */
+export async function deleteMoney(id: number, source: "ui" | "rafiq" = "ui") {
+  if (!Number.isInteger(id) || id <= 0) return { ok: false as const };
+  const [row] = await db.delete(moneyEntries).where(eq(moneyEntries.id, id)).returning();
+  if (!row) return { ok: false as const };
+  await db.insert(auditLog).values({
+    actor: source === "rafiq" ? "rafiq" : "user",
+    action: "money.delete",
+    tableName: "money_entries",
+    rowId: id,
+    payload: row,
+  });
+  return { ok: true as const };
 }
 
 export async function moneySummary() {

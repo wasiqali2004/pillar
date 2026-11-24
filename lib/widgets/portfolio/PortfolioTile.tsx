@@ -49,8 +49,18 @@ export function PortfolioTile({ data }: { data: PortfolioData }) {
       sub={
         data.stale ? (
           <span className="text-warn">Prices cached — feed unavailable</span>
+        ) : data.unpriced > 0 ? (
+          // Said up front: an unpriced holding is left out of every figure,
+          // so without this the total just looks wrong.
+          <span className="text-warn">
+            {data.unpriced} holding{data.unpriced === 1 ? "" : "s"} without a price · open to check
+          </span>
         ) : (
-          "Stocks, ETFs & crypto"
+          // The editor only lives in the opened tile, so say how to get there.
+          <>
+            Stocks, ETFs &amp; crypto
+            <span className="in-[.is-expanded]:hidden"> · open to add or edit</span>
+          </>
         )
       }
       right={
@@ -92,11 +102,11 @@ export function PortfolioTile({ data }: { data: PortfolioData }) {
             </span>
           </div>
           <div className="tnum mt-1 flex gap-3 text-[0.68rem]">
-            <span className="text-teal" title={`${p.up} holdings up`}>
+            <span className="text-teal" title={`${p.up} holding${p.up === 1 ? "" : "s"} up`}>
               ▲ {money(p.gainsCents)}{" "}
               <span className="text-faint">· {p.up}</span>
             </span>
-            <span className="text-bad" title={`${p.down} holdings down`}>
+            <span className="text-bad" title={`${p.down} holding${p.down === 1 ? "" : "s"} down`}>
               ▼ {money(Math.abs(p.lossesCents))}{" "}
               <span className="text-faint">· {p.down}</span>
             </span>

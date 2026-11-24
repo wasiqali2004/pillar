@@ -12,7 +12,7 @@ import { togglePrayer } from "./prayers";
 import { cycleSurah, addSurah, removeSurah } from "./deen";
 import { logBody } from "./body";
 import { logSleep } from "./sleep";
-import { addMoney } from "./money";
+import { addMoney, deleteMoney } from "./money";
 import {
   createGoal,
   updateGoal,
@@ -49,6 +49,7 @@ export async function logBodyAction(input: {
   steps?: number | null;
   sleepMinutes?: number | null;
   weightGrams?: number | null;
+  day?: "today" | "yesterday";
 }) {
   const r = await logBody(input, "ui");
   revalidatePath("/app");
@@ -62,6 +63,12 @@ export async function addMoneyAction(input: {
   note?: string | null;
 }) {
   const r = await addMoney(input, "ui");
+  revalidatePath("/app");
+  return r;
+}
+
+export async function deleteMoneyAction(id: number) {
+  const r = await deleteMoney(id, "ui");
   revalidatePath("/app");
   return r;
 }

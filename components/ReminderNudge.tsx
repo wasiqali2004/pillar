@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 const KEY = "pillar.reminderNudgeDismissed";
 
 /** One line on the dashboard. Settings is where it's done, and once dismissed it stays gone. */
-export function ReminderNudge({ muslim }: { muslim: boolean }) {
+export function ReminderNudge({ kind }: { kind: "prayers" | "habits" }) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function ReminderNudge({ muslim }: { muslim: boolean }) {
   if (!show) return null;
   return (
     <div className="auth-notice mb-3 flex flex-wrap items-center justify-between gap-2">
-      <span>{muslim ? "Want a nudge when each prayer comes in?" : "Want a nudge in the evening if habits are still open?"}</span>
+      <span>{kind === "prayers" ? "Want a nudge when each prayer comes in?" : "Want a nudge in the evening if habits are still open?"}</span>
       <span className="flex gap-3">
         <Link href="/app/settings#reminders" className="text-teal hover:underline">
           Set up reminders

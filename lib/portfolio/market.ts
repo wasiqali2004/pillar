@@ -55,8 +55,16 @@ const g = globalThis as unknown as {
   __pillarHistory?: Map<string, HistoryEntry>;
   __pillarIntraday?: Map<string, HistoryEntry>;
   __pillarForceUntil?: number;
+  __pillarSharedQuotes?: Map<string, typeof priceCache.$inferSelect>;
 };
 const lastAttempt = (g.__pillarQuoteAttempts ??= new Map());
+/**
+ * Every quote fetched, for any account. Prices are public, but each account's
+ * price_cache lives in its own database while `lastAttempt` is per server, so
+ * without this a symbol one person had just fetched was skipped for the next
+ * person too, and their new holding showed as unpriced ($0) for 15 minutes.
+ */
+const sharedQuotes = (g.__pillarSharedQuotes ??= new Map());
 
 /**
  * Makes the next quote fetch ignore the cache — what "Refresh" presses.
@@ -73,6 +81,14 @@ export function expireQuoteCache(): void {
   g.__pillarHistory?.clear();
   g.__pillarIntraday?.clear();
 }
+
+/** A symbol just added should be looked up now, not after the throttle window. */
+export function forgetQuoteAttempts(symbols: string[]): void {
+  for (const s of symbols) lastAttempt.delete(s);
+}
+
+/** How soon a failed fetch (feed down, throttled) is tried again. */
+const RETRY_AFTER_FAILURE_MS = 60 * 1000;
 
 function toQuote(row: typeof priceCache.$inferSelect): Quote {
   return {
@@ -100,6 +116,17 @@ export async function getQuotes(symbols: string[]): Promise<{
   const wanted = [...new Set(symbols)];
   let cached = await db.select().from(priceCache);
   const byCache = new Map(cached.map((c) => [c.symbol, c]));
+
+  // Fill this account's cache from quotes another account already fetched.
+  for (const s of wanted) {
+    const shared = sharedQuotes.get(s);
+    const mine = byCache.get(s);
+    if (shared && (!mine || Date.parse(shared.fetchedAt) > Date.parse(mine.fetchedAt))) {
+      await db.insert(priceCache).values(shared).onConflictDoUpdate({ target: priceCache.symbol, set: shared });
+      byCache.set(s, shared);
+    }
+  }
+  cached = [...byCache.values()];
 
   // A candidate Yahoo doesn't know (bare "VFV") never lands in the cache, so
   // "missing" alone would refetch on every render — it waits out the same
@@ -141,9 +168,13 @@ export async function getQuotes(symbols: string[]): Promise<{
           .insert(priceCache)
           .values(row)
           .onConflictDoUpdate({ target: priceCache.symbol, set: row });
+        sharedQuotes.set(row.symbol, row);
       }
       cached = await db.select().from(priceCache);
     } catch (e) {
+      // A failure says nothing about whether the symbols exist, so they're
+      // retried in a minute rather than waiting out the full window.
+      for (const s of wanted) lastAttempt.set(s, Date.now() - QUOTE_STALE_MS + RETRY_AFTER_FAILURE_MS);
       // The tile still renders from cache — a dead feed must not blank the page.
       error = e instanceof Error ? e.message : "Price feed unavailable";
       stale = cached.length > 0;

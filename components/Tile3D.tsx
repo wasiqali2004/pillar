@@ -20,10 +20,7 @@ const LIFT = 14;
  */
 const EXPAND_EVENT = "pillar:tile-expand";
 
-/** Controls that must keep their own click — expanding on top of them would
-    make checkboxes and Log buttons unusable. */
-const INTERACTIVE =
-  'button, a, input, select, textarea, label, summary, [role="button"], .no-expand';
+import { INTERACTIVE, forwardMisHitClick } from "./forwardClick";
 
 /**
  * The 3D stage a tile sits on, and the thing that expands it.
@@ -109,18 +106,8 @@ export function Tile3D({
       if (!expandable || expanded) return;
       const t = e.target as Element | null;
       if (t?.closest(INTERACTIVE)) return;
-      // The tilted 3D planes can make the browser hand a click on a control to
-      // the surface behind it (Chrome does this to the Body tile's Log button).
-      // If the click was inside a control's box, it was meant for the control.
-      const meant = [...e.currentTarget.querySelectorAll<HTMLElement>(INTERACTIVE)].find((c) => {
-        const r = c.getBoundingClientRect();
-        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-      });
-      if (meant) {
-        meant.focus();
-        meant.click();
-        return;
-      }
+      // A click meant for a control that Chrome handed to the surface behind it.
+      if (forwardMisHitClick(e)) return;
       // A click that ended a text selection isn't a click on the tile.
       if (window.getSelection()?.toString()) return;
       open();

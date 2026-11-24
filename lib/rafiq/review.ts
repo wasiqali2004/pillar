@@ -110,7 +110,7 @@ export async function buildWeeklyReview(at: string = localDate()): Promise<Weekl
     sections.push(await trainingSection(weekStart, weekEnd, prevStart, signals));
   }
   if (wants("body")) {
-    sections.push(await bodySection(weekStart, weekEnd, prevStart, signals));
+    sections.push(await bodySection(weekStart, weekEnd, prevStart, signals, wants("prayers", "deen")));
   }
   if (wants("quran", "deen")) {
     const s = await quranSection();
@@ -302,7 +302,14 @@ async function trainingSection(from: string, to: string, prevFrom: string, signa
 
 /* ── body ─────────────────────────────────────────────────────── */
 
-async function bodySection(from: string, to: string, prevFrom: string, signals: Signal[]): Promise<ReviewSection> {
+async function bodySection(
+  from: string,
+  to: string,
+  prevFrom: string,
+  signals: Signal[],
+  /** Prayers are on their dashboard, so a Fajr nudge means something to them. */
+  prays: boolean,
+): Promise<ReviewSection> {
   const avg = async (col: "steps" | "sleepMinutes", a: string, b: string) => {
     const [r] = await db
       .select({ v: sql<number | null>`avg(${bodyMetrics[col]})` })
@@ -311,17 +318,23 @@ async function bodySection(from: string, to: string, prevFrom: string, signals: 
     return r?.v == null ? null : Math.round(Number(r.v));
   };
 
-  // Today is still climbing, so counting it would drag the daily average down
-  // and report "145 steps a day" every morning.
+  // Today's steps are still climbing, so counting them would drag the daily
+  // average down and report "145 steps a day" every morning. Today's sleep is
+  // last night's and already complete, so it counts. And when today is all
+  // there is (someone logging by hand on day one), today's steps count too:
+  // "nothing this week" beside a number they just typed reads as a bug.
   const today = localDate();
   const end = to < today ? to : today;
+  const tomorrow = shiftDate(today, 1);
+  const sleepEnd = to < tomorrow ? to : tomorrow;
 
-  const [steps, prevSteps, sleep, prevSleep] = await Promise.all([
+  const [finishedSteps, prevSteps, sleep, prevSleep] = await Promise.all([
     avg("steps", from, end),
     avg("steps", prevFrom, from),
-    avg("sleepMinutes", from, end),
+    avg("sleepMinutes", from, sleepEnd),
     avg("sleepMinutes", prevFrom, from),
   ]);
+  const steps = finishedSteps ?? (end === today ? await avg("steps", from, sleepEnd) : null);
 
   const hhmm = (m: number | null) => (m == null ? "—" : `${Math.floor(m / 60)}h ${m % 60}m`);
 
@@ -330,14 +343,16 @@ async function bodySection(from: string, to: string, prevFrom: string, signals: 
       id: "sleep-low",
       kind: "nudge",
       rank: 2,
-      text: `Averaging ${hhmm(sleep)} a night. Fajr gets much easier at seven hours and up.`,
+      text: prays
+        ? `Averaging ${hhmm(sleep)} a night. Fajr gets much easier at seven hours and up.`
+        : `Averaging ${hhmm(sleep)} a night. Most people feel the difference at seven hours and up.`,
     });
   }
 
   return {
     id: "body",
     title: "Body",
-    headline: steps == null && sleep == null ? (from >= today ? "The week has just started" : "Nothing synced this week") : `${steps == null ? "—" : steps.toLocaleString()} steps a day · ${hhmm(sleep)} asleep`,
+    headline: steps == null && sleep == null ? (from >= today ? "The week has just started" : "Nothing logged this week") : `${steps == null ? "—" : steps.toLocaleString()} steps a day · ${hhmm(sleep)} asleep`,
     metrics: [
       { label: "Steps / day", value: steps == null ? "—" : steps.toLocaleString(), previous: prevSteps?.toLocaleString(), trend: trendOf(steps ?? 0, prevSteps ?? 0) },
       { label: "Sleep / night", value: hhmm(sleep), previous: prevSleep == null ? undefined : hhmm(prevSleep), trend: trendOf(sleep ?? 0, prevSleep ?? 0) },
@@ -391,7 +406,7 @@ async function moneySection(from: string, to: string, prevFrom: string, signals:
   return {
     id: "money",
     title: "Money",
-    headline: week === 0 ? "Nothing recorded this week" : `${money(week)} out`,
+    headline: week === 0 ? "Nothing spent this week" : `${money(week)} out`,
     // Spending less is the better direction here.
     metrics: [{ label: "Spent", value: money(week), previous: money(prev), trend: trendOf(week, prev, false) }],
   };

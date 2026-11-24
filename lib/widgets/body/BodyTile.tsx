@@ -5,7 +5,6 @@ import type { BodyData } from ".";
 import { logBodyAction } from "../actions";
 import { Tile } from "@/components/ui";
 import { num, duration, weight } from "@/lib/format";
-import { shiftDate } from "@/lib/date";
 import { useOpenFromHash } from "@/components/useOpenFromHash";
 
 const STEP_TARGET = 8000;
@@ -23,12 +22,12 @@ export function BodyTile({ data }: { data: BodyData }) {
   const [open, setOpen] = useState(false);
   const logButton = useRef<HTMLButtonElement>(null);
   useOpenFromHash("#log-body", () => setOpen(true), logButton);
-  const yesterday = shiftDate(data.today, -1);
+  const leadIsToday = data.leadDay === data.today;
 
   return (
     <Tile
       title="Body"
-      sub={`Yesterday · ${dayLabel(yesterday)}`}
+      sub={`${leadIsToday ? "Today" : "Yesterday"} · ${dayLabel(data.leadDay)}`}
       right={
         <button
           ref={logButton}
@@ -72,21 +71,19 @@ export function BodyTile({ data }: { data: BodyData }) {
           <Ring
             tone="teal"
             icon="👟"
-            value={data.stepsYesterday}
+            value={data.stepsLead}
             goal={STEP_TARGET}
-            display={data.stepsYesterday == null ? "—" : num(data.stepsYesterday)}
+            display={data.stepsLead == null ? "—" : num(data.stepsLead)}
             label="Steps"
             avg={data.stepsAvg}
           />
           <Ring
             tone="violet"
             icon="🔥"
-            value={data.caloriesYesterday}
+            value={data.caloriesLead}
             // No calorie goal exists, so the ring fills at your own 7-day average.
             goal={data.caloriesAvg}
-            display={
-              data.caloriesYesterday == null ? "—" : num(data.caloriesYesterday)
-            }
+            display={data.caloriesLead == null ? "—" : num(data.caloriesLead)}
             label="Calories"
             avg={data.caloriesAvg}
           />
@@ -102,7 +99,7 @@ export function BodyTile({ data }: { data: BodyData }) {
         </div>
       </div>
 
-      {(data.stepsToday != null || data.caloriesToday != null) && (
+      {!leadIsToday && (data.stepsToday != null || data.caloriesToday != null) && (
         <p className="tnum mt-3 text-center text-[0.72rem] text-muted">
           Today so far
           {data.stepsToday != null && <> · <b className="font-semibold text-ink">{num(data.stepsToday)}</b> steps</>}
@@ -339,6 +336,7 @@ function Chip({
 function LogForm({ onDone }: { onDone: () => void }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [day, setDay] = useState<"today" | "yesterday">("today");
 
   return (
     <form
@@ -364,15 +362,33 @@ function LogForm({ onDone }: { onDone: () => void }) {
         }
         setErr(null);
         start(async () => {
-          await logBodyAction({
+          const r = await logBodyAction({
             steps,
             sleepMinutes: hours == null ? null : Math.round(hours * 60),
             weightGrams: kg == null ? null : Math.round(kg * 1000),
+            day,
           });
+          if (!r.ok) {
+            setErr(r.error);
+            return;
+          }
           onDone();
         });
       }}
     >
+      <div className="col-span-2 flex gap-1.5" role="group" aria-label="Which day">
+        {(["today", "yesterday"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => setDay(d)}
+            aria-pressed={day === d}
+            className={`pill flex-1 justify-center text-xs ${day === d ? "pill-selected" : ""}`}
+          >
+            {d === "today" ? "Today" : "Yesterday"}
+          </button>
+        ))}
+      </div>
       <Field name="steps" label="Steps" placeholder="8200" />
       <Field name="sleep" label="Sleep hrs" placeholder="7.5" step="0.1" />
       <Field name="weight" label="Weight kg" placeholder="82.4" step="0.1" />

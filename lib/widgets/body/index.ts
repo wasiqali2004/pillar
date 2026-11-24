@@ -21,8 +21,16 @@ export type BodyData = {
    * the tile leads with the last finished day. Sleep ends today (last night).
    */
   steps7: (number | null)[];
+  /**
+   * The day the rings show: yesterday, the last finished day, unless today
+   * has numbers and yesterday has none. That second case is someone logging
+   * by hand. Without it, the steps they just typed went to a small "today so
+   * far" line while the rings showed dashes, which reads as the save failing.
+   */
+  leadDay: string;
   stepsToday: number | null;
-  stepsYesterday: number | null;
+  /** Steps on leadDay. */
+  stepsLead: number | null;
   stepsAvg: number | null;
   sleep7: (number | null)[];
   sleepLast: number | null;
@@ -31,7 +39,8 @@ export type BodyData = {
   sleepAvg: number | null;
   calories7: (number | null)[];
   caloriesToday: number | null;
-  caloriesYesterday: number | null;
+  /** Calories on leadDay. */
+  caloriesLead: number | null;
   caloriesAvg: number | null;
   /** Connected to Google Health, but before steps/calories were requested. */
   needsReconnect: boolean;
@@ -74,7 +83,9 @@ export async function loadBody(): Promise<BodyData> {
   const last7 = recentDates(7, today).reverse();
 
   const yesterday = shiftDate(today, -1);
-  const finished7 = recentDates(7, yesterday).reverse();
+  const has = (d: string) => byDate.get(d)?.steps != null || byDate.get(d)?.caloriesBurned != null;
+  const leadDay = has(today) && !has(yesterday) ? today : yesterday;
+  const finished7 = recentDates(7, leadDay).reverse();
 
   const steps7 = finished7.map((d) => byDate.get(d)?.steps ?? null);
   const sleep7 = last7.map((d) => byDate.get(d)?.sleepMinutes ?? null);
@@ -95,8 +106,9 @@ export async function loadBody(): Promise<BodyData> {
   return {
     today,
     steps7,
+    leadDay,
     stepsToday: byDate.get(today)?.steps ?? null,
-    stepsYesterday: byDate.get(yesterday)?.steps ?? null,
+    stepsLead: byDate.get(leadDay)?.steps ?? null,
     stepsAvg: avg(steps7),
     sleep7,
     // The most recent night on record, not strictly today's. A watch often
@@ -108,7 +120,7 @@ export async function loadBody(): Promise<BodyData> {
     sleepAvg: avg(sleep7),
     calories7,
     caloriesToday: byDate.get(today)?.caloriesBurned ?? null,
-    caloriesYesterday: byDate.get(yesterday)?.caloriesBurned ?? null,
+    caloriesLead: byDate.get(leadDay)?.caloriesBurned ?? null,
     caloriesAvg: avg(calories7),
     needsReconnect: health.connected && (!health.activityGranted || health.expired),
     noData: metrics.length === 0,
@@ -122,20 +134,39 @@ export async function loadBody(): Promise<BodyData> {
   };
 }
 
-/** Upserts today's row — one row per day, so re-logging corrects rather than duplicates. */
+/** What a person could plausibly log for one day. Anything outside is a typo. */
+const LIMITS = {
+  steps: [0, 150_000, "Steps"],
+  sleepMinutes: [0, 24 * 60, "Sleep"],
+  weightGrams: [20_000, 400_000, "Weight"],
+} as const;
+
+/**
+ * Upserts one day's row — one row per day, so re-logging corrects rather than
+ * duplicates. `day` is today unless they say yesterday: steps are usually
+ * typed the morning after, from the phone's count for the day before.
+ */
 export async function logBody(
   input: {
     steps?: number | null;
     sleepMinutes?: number | null;
     weightGrams?: number | null;
+    day?: "today" | "yesterday";
   },
   source: "ui" | "rafiq" = "ui",
-) {
-  const day = localDate();
-  const patch = Object.fromEntries(
-    Object.entries(input).filter(([, v]) => v != null && !Number.isNaN(v)),
-  );
-  if (Object.keys(patch).length === 0) return { ok: false };
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const day = input.day === "yesterday" ? shiftDate(localDate(), -1) : localDate();
+  const patch: Record<string, number> = {};
+  for (const key of ["steps", "sleepMinutes", "weightGrams"] as const) {
+    const v = input[key];
+    if (v == null) continue;
+    const [min, max, label] = LIMITS[key];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) {
+      return { ok: false, error: `${label} doesn't look right. Check the number and try again.` };
+    }
+    patch[key] = Math.round(v);
+  }
+  if (Object.keys(patch).length === 0) return { ok: false, error: "Fill at least one field." };
 
   await db
     .insert(bodyMetrics)
@@ -156,13 +187,14 @@ export async function bodySummary() {
   const d = await loadBody();
   return {
     steps_today_so_far: d.stepsToday,
-    steps_yesterday: d.stepsYesterday,
+    steps_on_lead_day: d.stepsLead,
+    lead_day: d.leadDay,
     steps_7day_avg: d.stepsAvg,
     sleep_latest_minutes: d.sleepLast,
     sleep_latest_date: d.sleepLastOn,
     sleep_7day_avg_minutes: d.sleepAvg,
     calories_burned_today_so_far: d.caloriesToday,
-    calories_burned_yesterday: d.caloriesYesterday,
+    calories_burned_on_lead_day: d.caloriesLead,
     calories_burned_7day_avg: d.caloriesAvg,
     weight_grams: d.weightLatest,
     weight_change_30d_grams: d.weightChange30,
@@ -191,10 +223,11 @@ export const bodyWidget = defineWidget<BodyData>({
     {
       name: "log_body_metric",
       description:
-        "Record today's steps, sleep (in minutes) or weight (in grams). Only the fields provided are changed.",
+        "Record steps, sleep (in minutes) or weight (in grams) for today, or for yesterday when the user says so. Only the fields provided are changed.",
       input_schema: {
         type: "object",
         properties: {
+          day: { type: "string", enum: ["today", "yesterday"] },
           steps: { type: "number" },
           sleepMinutes: { type: "number" },
           weightGrams: { type: "number" },

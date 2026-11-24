@@ -20,7 +20,10 @@ export default async function SettingsPage() {
       name={user.name}
       timezone={userTz()}
       prayer={prayer}
-      showPrayer={onboarding?.answers.faith !== "other" || ids.has("deen") || ids.has("prayers")}
+      // Prayer settings for anyone who said they're Muslim or has prayers on
+      // their dashboard. Someone who skipped the question and left prayers
+      // off was being asked to set a location and an Asr method for nothing.
+      showPrayer={onboarding?.answers.faith === "muslim" || ids.has("deen") || ids.has("prayers")}
       isOwner={user.isOwner}
       reminders={{ publicKey: vapidPublicKey(), prefs: reminderPrefs }}
     />

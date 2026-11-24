@@ -17,6 +17,7 @@ import { ReminderNudge } from "@/components/ReminderNudge";
 import { RefreshButton } from "@/components/RefreshButton";
 import { DashboardGrid, CustomizeButton, type DashItem } from "@/components/DashboardGrid";
 import { RafiqButton, RafiqPanel } from "@/components/Rafiq";
+import { rafiqConfigured } from "@/lib/rafiq/agent";
 
 /**
  * Widget loads hit the database (and, for the portfolio, a price feed) rather
@@ -32,6 +33,8 @@ export default async function Dashboard() {
   const [layout, plan, onboarding] = await Promise.all([getLayout(), getPlan(), getOnboarding(), touchActive()]);
   // No saved layout means they haven't been through setup yet.
   if (!layout) redirect("/welcome");
+
+  const prayersOn = layout.some((i) => i.id === "deen" || i.id === "prayers");
 
   const today = new Date(`${localDate()}T12:00:00Z`).toLocaleDateString(
     "en-CA",
@@ -62,8 +65,15 @@ export default async function Dashboard() {
   return (
     <main className="mx-auto flex w-full max-w-[1800px] flex-col px-5 py-6 sm:px-7 xl:px-8 xl:py-5">
       <AutoRefresh />
-      <ReminderNudge muslim={onboarding?.answers.faith !== "other"} />
-      <RafiqPanel enabled={isPaid(plan)} muslim={onboarding?.answers.faith !== "other"} />
+      {/* Ask about the reminder that matches what's on the dashboard: prayer
+          times only when prayers are on it, the habit check-in only when
+          habits are. Neither, and there's nothing to remind them of. */}
+      {prayersOn ? (
+        <ReminderNudge kind="prayers" />
+      ) : layout.some((i) => i.id === "habits") ? (
+        <ReminderNudge kind="habits" />
+      ) : null}
+      <RafiqPanel enabled={isPaid(plan)} muslim={onboarding?.answers.faith === "muslim" || prayersOn} prayers={prayersOn} configured={rafiqConfigured()} />
       <DashboardGrid
         items={items}
         header={
